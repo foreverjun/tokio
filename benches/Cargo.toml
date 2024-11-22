@@ -13,10 +13,12 @@ tokio = { version = "1.5.0", path = "../tokio", features = ["full"] }
 criterion = "0.5.1"
 rand = "0.8"
 rand_chacha = "0.3"
+tokio-metrics = { version = "0.3.1", path = "../../tokio-metrics-0.3.1/tokio-metrics-0.3.1" }
 
 [dev-dependencies]
 tokio-util = { version = "0.7.0", path = "../tokio-util", features = ["full"] }
 tokio-stream = { version = "0.1", path = "../tokio-stream" }
+tokio-metrics = { version = "0.3.1", path = "../../tokio-metrics-0.3.1/tokio-metrics-0.3.1" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.42"
@@ -94,4 +96,9 @@ harness = false
 [[bench]]
 name = "time_timeout"
 path = "time_timeout.rs"
+harness = false
+
+[[bench]]
+name = "inject_queue_overload"
+path = "inject_queue_overload.rs"
 harness = false
