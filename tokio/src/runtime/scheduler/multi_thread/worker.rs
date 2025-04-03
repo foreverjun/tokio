@@ -159,7 +159,9 @@ pub(crate) struct Shared {
     pub(crate) owned: OwnedTasks<Arc<Handle>>,
 
     /// Data synchronized by the scheduler mutex
-    pub(super) synced: Mutex<Synced>,
+    pub(super) synced: Mutex<SyncedIdle>,
+
+    pub(super) synced_inject: Mutex<SyncedInject>,
 
     /// Cores that have observed the shutdown signal
     ///
@@ -187,10 +189,13 @@ pub(crate) struct Shared {
 }
 
 /// Data synchronized by the scheduler mutex
-pub(crate) struct Synced {
+pub(crate) struct SyncedIdle {
     /// Synchronized state for `Idle`.
-    pub(super) idle: idle::Synced,
+    pub(super) idle: idle::Synced
+}
 
+/// Data synchronized by the scheduler mutex
+pub(crate) struct SyncedInject {
     /// Synchronized state for `Inject`.
     pub(crate) inject: inject::Synced,
 }
@@ -287,9 +292,11 @@ pub(super) fn create(
             inject,
             idle,
             owned: OwnedTasks::new(size),
-            synced: Mutex::new(Synced {
-                idle: idle_synced,
-                inject: inject_synced,
+            synced: Mutex::new(SyncedIdle {
+                idle: idle_synced
+            }),
+            synced_inject: Mutex::new(SyncedInject{
+                inject: inject_synced
             }),
             shutdown_cores: Mutex::new(vec![]),
             trace_status: TraceStatus::new(remotes_len),
@@ -845,7 +852,7 @@ impl Core {
             // and not pushed onto the local queue.
             let n = usize::max(1, n);
 
-            let mut synced = worker.handle.shared.synced.lock();
+            let mut synced = worker.handle.shared.synced_inject.lock();
             // safety: passing in the correct `inject::Synced`.
             let mut tasks = unsafe { worker.inject().pop_n(&mut synced.inject, n) };
 
@@ -995,7 +1002,7 @@ impl Core {
 
         if !self.is_shutdown {
             // Check if the scheduler has been shutdown
-            let synced = worker.handle.shared.synced.lock();
+            let synced = worker.handle.shared.synced_inject.lock();
             self.is_shutdown = worker.inject().is_closed(&synced.inject);
         }
 
@@ -1139,7 +1146,7 @@ impl Handle {
             return None;
         }
 
-        let mut synced = self.shared.synced.lock();
+        let mut synced = self.shared.synced_inject.lock();
         // safety: passing in correct `idle::Synced`
         unsafe { self.shared.inject.pop(&mut synced.inject) }
     }
@@ -1147,7 +1154,7 @@ impl Handle {
     fn push_remote_task(&self, task: Notified) {
         self.shared.scheduler_metrics.inc_remote_schedule_count();
 
-        let mut synced = self.shared.synced.lock();
+        let mut synced = self.shared.synced_inject.lock();
         // safety: passing in correct `idle::Synced`
         unsafe {
             self.shared.inject.push(&mut synced.inject, task);
@@ -1158,7 +1165,7 @@ impl Handle {
         if self
             .shared
             .inject
-            .close(&mut self.shared.synced.lock().inject)
+            .close(&mut self.shared.synced_inject.lock().inject)
         {
             self.notify_all();
         }
@@ -1253,7 +1260,7 @@ impl Overflow<Arc<Handle>> for Handle {
 }
 
 pub(crate) struct InjectGuard<'a> {
-    lock: crate::loom::sync::MutexGuard<'a, Synced>,
+    lock: crate::loom::sync::MutexGuard<'a, SyncedInject>,
 }
 
 impl<'a> AsMut<inject::Synced> for InjectGuard<'a> {
@@ -1267,7 +1274,7 @@ impl<'a> Lock<inject::Synced> for &'a Handle {
 
     fn lock(self) -> Self::Handle {
         InjectGuard {
-            lock: self.shared.synced.lock(),
+            lock: self.shared.synced_inject.lock(),
         }
     }
 }

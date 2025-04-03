@@ -292,7 +292,7 @@ pub(in crate::runtime) fn trace_current_thread(
 cfg_rt_multi_thread! {
     use crate::loom::sync::Mutex;
     use crate::runtime::scheduler::multi_thread;
-    use crate::runtime::scheduler::multi_thread::Synced;
+    use crate::runtime::scheduler::multi_thread::SyncedInject;
     use crate::runtime::scheduler::inject::Shared;
 
     /// Trace and poll all tasks of the `current_thread` runtime.
@@ -303,7 +303,7 @@ cfg_rt_multi_thread! {
     pub(in crate::runtime) unsafe fn trace_multi_thread(
         owned: &OwnedTasks<Arc<multi_thread::Handle>>,
         local: &mut multi_thread::queue::Local<Arc<multi_thread::Handle>>,
-        synced: &Mutex<Synced>,
+        synced: &Mutex<SyncedInject>,
         injection: &Shared<Arc<multi_thread::Handle>>,
     ) -> Vec<(Id, Trace)> {
         let mut dequeued = Vec::new();

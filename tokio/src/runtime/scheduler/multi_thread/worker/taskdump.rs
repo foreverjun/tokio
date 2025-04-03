@@ -35,7 +35,7 @@ impl Handle {
 
         let owned = &self.shared.owned;
         let mut local = self.shared.steal_all();
-        let synced = &self.shared.synced;
+        let synced = &self.shared.synced_inject;
         let injection = &self.shared.inject;
 
         // safety: `trace_multi_thread` is invoked with the same `synced` that `injection`
