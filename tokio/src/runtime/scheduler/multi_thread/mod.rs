@@ -23,6 +23,8 @@ pub(crate) mod queue;
 mod worker;
 pub(crate) use worker::{Context, Launch, Shared};
 
+pub(crate) mod fast_queue;
+
 cfg_taskdump! {
     mod trace;
     use trace::TraceStatus;
