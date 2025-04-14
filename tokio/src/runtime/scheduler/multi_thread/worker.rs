@@ -291,8 +291,9 @@ pub(super) fn create(
     let (idle, idle_synced) = Idle::new(size);
     let (inject, inject_synced) = inject::Shared::new();
 
-    let inject_min = (config.local_queue_capacity * (size as f64).log(E).ceil() as usize).next_power_of_two();
-    let transfer_size = config.local_queue_capacity * 2 * (size as f64).log(E).ceil() as usize;
+    let size_log = ((size as f64).log(E).ceil() as usize).max(1);
+    let inject_min = (config.local_queue_capacity * size_log).next_power_of_two();
+    let transfer_size = config.local_queue_capacity * 2 * size_log;
     let lf_queue = FAAAQueue::new(inject_min, transfer_size);
 
     let remotes_len = remotes.len();
@@ -1173,12 +1174,12 @@ impl Handle {
     }
 
     fn next_remote_task(&self) -> Option<Notified> {
-        if self.shared.inject.is_empty() {
-            return None;
-        }
-
         if let Some(task) = self.shared.lf_queue.queue().pop() {
             return Some(task);
+        }
+        
+        if self.shared.inject.is_empty() {
+            return None;
         }
 
         let mut synced = self.shared.synced.lock();
