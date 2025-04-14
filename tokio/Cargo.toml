@@ -89,7 +89,7 @@ time = []
 tokio-macros = { version = "~2.5.0", path = "../tokio-macros", optional = true }
 
 pin-project-lite = "0.2.11"
-faa_array_queue = "0.1.2"
+crossbeam-queue = "0.3"
 
 # Everything else is optional...
 bytes = { version = "1.2.1", optional = true }

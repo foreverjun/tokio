@@ -1,7 +1,7 @@
 use crate::runtime::task;
 
 pub(crate) mod fq_holder;
-pub(crate) mod faaaqueue;
+pub(crate) mod crossbeam;
 
 pub(crate) trait FastQueue<T: 'static>: Send + Sync {
     type Iter<'a>: Iterator<Item = task::Notified<T>>

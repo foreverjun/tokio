@@ -91,33 +91,30 @@ impl<T: 'static> Shared<T> {
 
         synced_mut.tail = Some(batch_tail);
 
-        // Increment the count.
-        //
         // safety: All updates to the len atomic are guarded by the mutex. As
         // such, a non-atomic load followed by a store is safe.
-        let len = self.len.unsync_load();
-
-        // Calculate the threshold for batch transfer to the fast-access queue.
-        let transfer_border = queue_holder.inject_min() + queue_holder.transfer_size();
-
-        if len + num >= transfer_border {
-            // The queue has reached the transfer threshold.
-            // Move a batch of tasks to the lock-free fast-access queue.
-
-            let mut tasks_to_transfer: Vec<task::Notified<T>> = Vec::with_capacity(queue_holder.transfer_size());
-            for _ in 0..queue_holder.transfer_size() {
-                let task = synced_mut.pop();
-                debug_assert!(task.is_some());
-                if let Some(t) = task {
-                    tasks_to_transfer.push(t);
+        let current_len = self.len.unsync_load();
+        let transfer_size = queue_holder.transfer_size();
+        let transfer_border = queue_holder.inject_min() + transfer_size;
+        
+        let new_len = current_len + num;
+        
+        if new_len > transfer_border {
+            let mut tasks_to_transfer = Vec::with_capacity(transfer_size);
+            
+            for _ in 0..transfer_size {
+                match synced_mut.pop() {
+                    Some(task) => tasks_to_transfer.push(task),
+                    None => break,
                 }
             }
-            self.len.store(len + num - tasks_to_transfer.len(), Release);
+        
+            let transferred = tasks_to_transfer.len();
+            self.len.store(new_len - transferred, Release);
             drop(synced_lock);
-            
             queue_holder.queue().push_batch(tasks_to_transfer.into_iter());
         } else {
-            self.len.store(len + num, Release);
+            self.len.store(new_len, Release);
         }
 
     }

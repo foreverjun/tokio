@@ -71,7 +71,7 @@ use crate::util::rand::{FastRand, RngSeedGenerator};
 
 use super::fast_queue::fq_holder::QueueHolder;
 use super::fast_queue::FastQueue;
-use crate::runtime::scheduler::multi_thread::fast_queue::faaaqueue::FAAAQueue;
+use crate::runtime::scheduler::multi_thread::fast_queue::crossbeam::Crossbeam;
 use std::cell::RefCell;
 use std::f64::consts::E;
 use std::task::Waker;
@@ -160,7 +160,7 @@ pub(crate) struct Shared {
 
     /// Additional queue with fast concurrent access
     /// It carries over some of the tasks from inject
-    pub(super) lf_queue: QueueHolder<Arc<Handle>, FAAAQueue<Arc<Handle>>>,
+    pub(super) lf_queue: QueueHolder<Arc<Handle>, Crossbeam<Arc<Handle>>>,
 
     /// Coordinates idle workers
     idle: Idle,
@@ -294,7 +294,7 @@ pub(super) fn create(
     let size_log = ((size as f64).log(E).ceil() as usize).max(1);
     let inject_min = (config.local_queue_capacity * size_log).next_power_of_two();
     let transfer_size = config.local_queue_capacity * 2 * size_log;
-    let lf_queue = FAAAQueue::new(inject_min, transfer_size);
+    let lf_queue = Crossbeam::new(inject_min, transfer_size);
 
     let remotes_len = remotes.len();
     let handle = Arc::new(Handle {
@@ -838,30 +838,23 @@ impl Core {
                 return maybe_task;
             }
 
+            let batch_size = self.run_queue.remaining_slots().clamp(1, 64);
+
+            let mut lf_tasks = worker.handle.shared.lf_queue.queue().pop_n(batch_size);
+            let first = lf_tasks.next();
+
+            if let Some(task) = first {
+                self.transfer_buf.extend(lf_tasks);
+                let drained = self.transfer_buf.drain(..);
+
+
+                self.run_queue.push_back(drained);
+                return Some(task);
+            }
+
             if worker.inject().is_empty() {
                 return None;
             }
-
-
-            // First, we check the fast concurrent queue
-            let batch_size = 64;
-
-            let mut lf_tasks = worker.handle.shared.lf_queue.queue().pop_n(batch_size);
-            // Pop the first task to return immediately
-            let lf_ret = lf_tasks.next();
-
-            if lf_ret.is_some() {
-                while let Some(task) = lf_tasks.next() {
-                    self.transfer_buf.push(task);
-                }
-
-                // Drain the transfer buffer and push the tasks to the run queue
-                let exact_it = self.transfer_buf.drain(..);
-                self.run_queue.push_back(exact_it);
-                return lf_ret;
-            }
-
-
 
             // Other threads can only **remove** tasks from the current worker's
             // `run_queue`. So, we can be confident that by the time we call
@@ -1316,7 +1309,9 @@ impl Overflow<Arc<Handle>> for Handle {
         I: Iterator<Item = task::Notified<Arc<Handle>>>,
     {
         unsafe {
-            self.shared.inject.push_batch_overflow(self, iter, &self.shared.lf_queue);
+            self.shared
+                .inject
+                .push_batch_overflow(self, iter, &self.shared.lf_queue);
         }
     }
 }
