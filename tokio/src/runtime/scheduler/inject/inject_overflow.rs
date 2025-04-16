@@ -1,6 +1,9 @@
 use crate::runtime::scheduler::inject::{Shared, Synced};
+#[cfg(feature = "rt-multi-thread")]
 use crate::runtime::scheduler::multi_thread::fast_queue::fq_holder::QueueHolder;
+#[cfg(feature = "rt-multi-thread")]
 use crate::runtime::scheduler::multi_thread::fast_queue::FastQueue;
+#[cfg(feature = "rt-multi-thread")]
 use crate::runtime::scheduler::Lock;
 use crate::runtime::task;
 use std::sync::atomic::Ordering::Release;
