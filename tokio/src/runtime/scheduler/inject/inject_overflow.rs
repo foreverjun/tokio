@@ -7,7 +7,7 @@ use crate::runtime::scheduler::multi_thread::fast_queue::FastQueue;
 use crate::runtime::scheduler::Lock;
 use crate::runtime::task;
 use std::sync::atomic::Ordering::Release;
-
+#[cfg(feature = "rt-multi-thread")]
 impl<T: 'static> Shared<T> {
     /// Pushes several values into the queue.
     ///
