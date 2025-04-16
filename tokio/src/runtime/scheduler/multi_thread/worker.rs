@@ -847,7 +847,6 @@ impl Core {
                 self.transfer_buf.extend(lf_tasks);
                 let drained = self.transfer_buf.drain(..);
 
-
                 self.run_queue.push_back(drained);
                 return Some(task);
             }
@@ -1170,7 +1169,7 @@ impl Handle {
         if let Some(task) = self.shared.lf_queue.queue().pop() {
             return Some(task);
         }
-        
+
         if self.shared.inject.is_empty() {
             return None;
         }
@@ -1207,7 +1206,10 @@ impl Handle {
                 tasks_to_transfer.push(task);
             }
             drop(synced);
-            self.shared.lf_queue.queue().push_batch(tasks_to_transfer.into_iter());
+            self.shared
+                .lf_queue
+                .queue()
+                .push_batch(tasks_to_transfer.into_iter());
         }
     }
 

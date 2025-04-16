@@ -1,6 +1,6 @@
 use crate::runtime::scheduler::inject::{Shared, Synced};
-use crate::runtime::scheduler::multi_thread::fast_queue::FastQueue;
 use crate::runtime::scheduler::multi_thread::fast_queue::fq_holder::QueueHolder;
+use crate::runtime::scheduler::multi_thread::fast_queue::FastQueue;
 use crate::runtime::scheduler::Lock;
 use crate::runtime::task;
 use std::sync::atomic::Ordering::Release;
@@ -12,8 +12,12 @@ impl<T: 'static> Shared<T> {
     ///
     /// Must be called with the same `Synced` instance returned by `Inject::new`
     #[inline]
-    pub(crate) unsafe fn push_batch_overflow<L, I, Q>(&self, shared: L, mut iter: I, queue_holder: &QueueHolder<T,Q>)
-    where
+    pub(crate) unsafe fn push_batch_overflow<L, I, Q>(
+        &self,
+        shared: L,
+        mut iter: I,
+        queue_holder: &QueueHolder<T, Q>,
+    ) where
         L: Lock<Synced>,
         I: Iterator<Item = task::Notified<T>>,
         Q: FastQueue<T>,
@@ -56,7 +60,7 @@ impl<T: 'static> Shared<T> {
         batch_head: task::RawTask,
         batch_tail: task::RawTask,
         num: usize,
-        queue_holder: &QueueHolder<T,Q>,
+        queue_holder: &QueueHolder<T, Q>,
     ) where
         L: Lock<Synced>,
         Q: FastQueue<T>,
@@ -96,26 +100,27 @@ impl<T: 'static> Shared<T> {
         let current_len = self.len.unsync_load();
         let transfer_size = queue_holder.transfer_size();
         let transfer_border = queue_holder.inject_min() + transfer_size;
-        
+
         let new_len = current_len + num;
-        
+
         if new_len > transfer_border {
             let mut tasks_to_transfer = Vec::with_capacity(transfer_size);
-            
+
             for _ in 0..transfer_size {
                 match synced_mut.pop() {
                     Some(task) => tasks_to_transfer.push(task),
                     None => break,
                 }
             }
-        
+
             let transferred = tasks_to_transfer.len();
             self.len.store(new_len - transferred, Release);
             drop(synced_lock);
-            queue_holder.queue().push_batch(tasks_to_transfer.into_iter());
+            queue_holder
+                .queue()
+                .push_batch(tasks_to_transfer.into_iter());
         } else {
             self.len.store(new_len, Release);
         }
-
     }
 }

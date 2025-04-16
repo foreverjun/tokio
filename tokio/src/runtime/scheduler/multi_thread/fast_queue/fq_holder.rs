@@ -10,7 +10,6 @@ pub(crate) struct QueueHolder<T: 'static, Q: FastQueue<T>> {
 }
 // Transfer from inject occurs when len >= inject_min + transfer_size
 
-
 impl<T: 'static, Q: FastQueue<T>> QueueHolder<T, Q> {
     pub(crate) fn new(queue: Q, inject_min: usize, transfer_size: usize) -> Self {
         Self {

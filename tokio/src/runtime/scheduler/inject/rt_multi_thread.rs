@@ -26,6 +26,7 @@ impl<T: 'static> Shared<T> {
     ///
     /// Must be called with the same `Synced` instance returned by `Inject::new`
     #[inline]
+    #[allow(dead_code)]
     pub(crate) unsafe fn push_batch<L, I>(&self, shared: L, mut iter: I)
     where
         L: Lock<Synced>,
@@ -63,6 +64,7 @@ impl<T: 'static> Shared<T> {
     /// The provided head and tail may be be the same task. In this case, a
     /// single task is inserted.
     #[inline]
+    #[allow(dead_code)]
     unsafe fn push_batch_inner<L>(
         &self,
         shared: L,
