@@ -69,9 +69,9 @@ use crate::task::coop;
 use crate::util::atomic_cell::AtomicCell;
 use crate::util::rand::{FastRand, RngSeedGenerator};
 
+use super::fast_queue::bq::BqQueue;
 use super::fast_queue::fq_holder::QueueHolder;
 use super::fast_queue::FastQueue;
-use crate::runtime::scheduler::multi_thread::fast_queue::crossbeam::Crossbeam;
 use std::cell::RefCell;
 use std::f64::consts::E;
 use std::task::Waker;
@@ -160,7 +160,7 @@ pub(crate) struct Shared {
 
     /// Additional queue with fast concurrent access
     /// It carries over some of the tasks from inject
-    pub(super) lf_queue: QueueHolder<Arc<Handle>, Crossbeam<Arc<Handle>>>,
+    pub(super) lf_queue: QueueHolder<Arc<Handle>, BqQueue<Arc<Handle>>>,
 
     /// Coordinates idle workers
     idle: Idle,
@@ -294,7 +294,7 @@ pub(super) fn create(
     let size_log = ((size as f64).log(E).ceil() as usize).max(1);
     let inject_min = (config.local_queue_capacity * size_log).next_power_of_two();
     let transfer_size = config.local_queue_capacity * 2 * size_log;
-    let lf_queue = Crossbeam::new(inject_min, transfer_size);
+    let lf_queue = BqQueue::new(inject_min, transfer_size);
 
     let remotes_len = remotes.len();
     let handle = Arc::new(Handle {

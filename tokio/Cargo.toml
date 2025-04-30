@@ -87,6 +87,7 @@ time = []
 
 [dependencies]
 tokio-macros = { version = "~2.5.0", path = "../tokio-macros", optional = true }
+batching_queue = { git = "https://github.com/foreverjun/batch_queue.git", branch = "main" }
 
 pin-project-lite = "0.2.11"
 crossbeam-queue = "0.3"

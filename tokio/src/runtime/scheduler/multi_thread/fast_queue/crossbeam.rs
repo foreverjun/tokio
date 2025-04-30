@@ -8,6 +8,7 @@ pub(crate) struct Crossbeam<T: Schedule> {
 }
 
 impl<T: Schedule> Crossbeam<T> {
+    #[allow(dead_code)]
     pub(crate) fn new(inject_min: usize, transfer_size: usize) -> QueueHolder<T, Crossbeam<T>> {
         QueueHolder::new(
             Self {
