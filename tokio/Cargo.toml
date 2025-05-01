@@ -87,7 +87,7 @@ time = []
 
 [dependencies]
 tokio-macros = { version = "~2.5.0", path = "../tokio-macros", optional = true }
-faa_array_queue = { git = "https://github.com/foreverjun/FAAArrayQueue.git", branch = "main" }
+faa_array_queue = { git = "https://github.com/foreverjun/FAAArrayQueue.git", branch = "pointer_queue" }
 pin-project-lite = "0.2.11"
 crossbeam-queue = "0.3"
 

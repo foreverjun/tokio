@@ -160,7 +160,7 @@ pub(crate) struct Shared {
 
     /// Additional queue with fast concurrent access
     /// It carries over some of the tasks from inject
-    pub(super) lf_queue: QueueHolder<Arc<Handle>, FAAArray<Arc<Handle>>>,
+    pub(super) lf_queue: QueueHolder<FAAArray>,
 
     /// Coordinates idle workers
     idle: Idle,
@@ -1191,25 +1191,6 @@ impl Handle {
         // safety: passing in correct `idle::Synced`
         unsafe {
             self.shared.inject.push(&mut synced.inject, task);
-        }
-
-        let len = self.shared.inject.len();
-
-        let transfer_size = self.shared.lf_queue.transfer_size();
-
-        let transfer_border = self.shared.lf_queue.inject_min() + transfer_size;
-
-        if len >= transfer_border {
-            let mut tasks_to_transfer = Vec::with_capacity(transfer_size);
-            let tasks = unsafe { self.shared.inject.pop_n(&mut synced.inject, transfer_size) };
-            for task in tasks {
-                tasks_to_transfer.push(task);
-            }
-            drop(synced);
-            self.shared
-                .lf_queue
-                .queue()
-                .push_batch(tasks_to_transfer.into_iter());
         }
     }
 

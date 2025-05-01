@@ -18,11 +18,11 @@ mod multi_thread_push_overflow {
             &self,
             shared: L,
             mut iter: I,
-            queue_holder: &QueueHolder<T, Q>,
+            queue_holder: &QueueHolder<Q>,
         ) where
             L: Lock<Synced>,
             I: Iterator<Item = task::Notified<T>>,
-            Q: FastQueue<T>,
+            Q: FastQueue,
         {
             let first = match iter.next() {
                 Some(first) => first.into_raw(),
@@ -62,10 +62,10 @@ mod multi_thread_push_overflow {
             batch_head: task::RawTask,
             batch_tail: task::RawTask,
             num: usize,
-            queue_holder: &QueueHolder<T, Q>,
+            queue_holder: &QueueHolder<Q>,
         ) where
             L: Lock<Synced>,
-            Q: FastQueue<T>,
+            Q: FastQueue,
         {
             debug_assert!(unsafe { batch_tail.get_queue_next().is_none() });
 
@@ -109,9 +109,17 @@ mod multi_thread_push_overflow {
                 let mut tasks_to_transfer = Vec::with_capacity(transfer_size);
 
                 for _ in 0..transfer_size {
-                    match synced_mut.pop() {
-                        Some(task) => tasks_to_transfer.push(task),
-                        None => break,
+                    if let Some(task) = synced_mut.head {
+                        synced_mut.head = unsafe { task.get_queue_next() };
+
+                        if synced_mut.head.is_none() {
+                            synced_mut.tail = None;
+                        }
+
+                        unsafe { task.set_queue_next(None) };
+                        tasks_to_transfer.push(task)
+                    } else {
+                        break;
                     }
                 }
 

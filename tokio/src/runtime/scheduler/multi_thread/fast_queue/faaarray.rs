@@ -1,30 +1,32 @@
+use crate::loom::sync::Arc;
 use crate::runtime::scheduler::multi_thread::fast_queue::fq_holder::QueueHolder;
 use crate::runtime::scheduler::multi_thread::fast_queue::FastQueue;
-use crate::runtime::task::{Notified, Schedule};
+use crate::runtime::scheduler::multi_thread::Handle;
+use crate::runtime::task;
 use faa_array_queue::FAAArrayQueue;
 
-pub(crate) struct FAAArray<T: Schedule> {
-    queue: FAAArrayQueue<Notified<T>>,
+pub(crate) struct FAAArray {
+    queue: FAAArrayQueue<task::Header>,
 }
 
-impl<T: Schedule> FAAArray<T> {
-    pub(crate) fn new(inject_min: usize, transfer_size: usize) -> QueueHolder<T, FAAArray<T>> {
+impl FAAArray {
+    pub(crate) fn new(inject_min: usize, transfer_size: usize) -> QueueHolder<FAAArray> {
         QueueHolder::new(
             Self {
-                queue: FAAArrayQueue::<Notified<T>>::new(),
+                queue: FAAArrayQueue::<task::Header>::new(),
             },
             inject_min,
             transfer_size,
         )
     }
 }
-pub(crate) struct FAAArrayIter<'a, T: Schedule> {
-    queue: &'a FAAArray<T>,
+pub(crate) struct FAAArrayIter<'a> {
+    queue: &'a FAAArray,
     remaining: usize,
 }
 
-impl<'a, T: 'static + Schedule> Iterator for FAAArrayIter<'a, T> {
-    type Item = Notified<T>;
+impl Iterator for FAAArrayIter<'_> {
+    type Item = task::Notified<Arc<Handle>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
@@ -35,26 +37,30 @@ impl<'a, T: 'static + Schedule> Iterator for FAAArrayIter<'a, T> {
     }
 }
 
-impl<T: 'static + Schedule> FastQueue<T> for FAAArray<T> {
-    type Iter<'a> = FAAArrayIter<'a, T>;
-    fn push(&self, task: Notified<T>) {
-        self.queue.enqueue(task);
+impl FastQueue for FAAArray {
+    type Iter<'a> = FAAArrayIter<'a>;
+    fn push(&self, task: task::RawTask) {
+        self.queue.enqueue(task.as_mut_ptr());
     }
 
     fn push_batch<I>(&self, tasks: I)
     where
-        I: Iterator<Item = Notified<T>>,
+        I: Iterator<Item = task::RawTask>,
     {
         for t in tasks {
-            self.queue.enqueue(t);
+            self.queue.enqueue(t.as_mut_ptr());
         }
     }
 
-    fn pop(&self) -> Option<Notified<T>> {
-        self.queue.dequeue()
+    fn pop(&self) -> Option<task::Notified<Arc<Handle>>> {
+        let ptr = self.queue.dequeue();
+        if ptr.is_null() {
+            return None;
+        }
+        unsafe { Some(task::Notified::from_raw(task::RawTask::from_mut_ptr(ptr))) }
     }
 
-    fn pop_n(&self, n: usize) -> FAAArrayIter<'_, T> {
+    fn pop_n(&self, n: usize) -> FAAArrayIter<'_> {
         FAAArrayIter {
             queue: self,
             remaining: n,
