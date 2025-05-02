@@ -6,6 +6,9 @@ mod multi_thread_push_overflow {
     use crate::runtime::scheduler::Lock;
     use crate::runtime::task;
     use std::sync::atomic::Ordering::Release;
+    use std::mem::MaybeUninit;
+
+    const TRANSFER_SIZE: usize = 256;
 
     impl<T: 'static> Shared<T> {
         /// Pushes several values into the queue.
@@ -100,15 +103,17 @@ mod multi_thread_push_overflow {
             // safety: All updates to the len atomic are guarded by the mutex. As
             // such, a non-atomic load followed by a store is safe.
             let current_len = self.len.unsync_load();
-            let transfer_size = queue_holder.transfer_size();
-            let transfer_border = queue_holder.inject_min() + transfer_size;
+            // let transfer_size = queue_holder.transfer_size();
+            let transfer_border = queue_holder.inject_min() + TRANSFER_SIZE;
 
             let new_len = current_len + num;
 
             if new_len > transfer_border {
-                let mut tasks_to_transfer = Vec::with_capacity(transfer_size);
+                let mut tasks_to_transfer: [MaybeUninit<task::RawTask>; TRANSFER_SIZE] =
+                [MaybeUninit::uninit(); TRANSFER_SIZE];
+                let mut transferred = 0;
 
-                for _ in 0..transfer_size {
+                for i in 0..TRANSFER_SIZE {
                     if let Some(task) = synced_mut.head {
                         synced_mut.head = unsafe { task.get_queue_next() };
 
@@ -117,18 +122,19 @@ mod multi_thread_push_overflow {
                         }
 
                         unsafe { task.set_queue_next(None) };
-                        tasks_to_transfer.push(task)
+                        tasks_to_transfer[i].write(task);
+                        transferred += 1;
                     } else {
                         break;
                     }
                 }
-
-                let transferred = tasks_to_transfer.len();
                 self.len.store(new_len - transferred, Release);
                 drop(synced_lock);
-                queue_holder
-                    .queue()
-                    .push_batch(tasks_to_transfer.into_iter());
+                for i in 0..transferred {
+                    queue_holder
+                        .queue()
+                        .push(unsafe { tasks_to_transfer[i].assume_init() });
+                }
             } else {
                 self.len.store(new_len, Release);
             }
