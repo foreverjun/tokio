@@ -12,6 +12,7 @@ pub(crate) trait FastQueue {
     #[allow(dead_code)]
     fn push(&self, task: task::RawTask);
 
+    #[allow(dead_code)]
     fn push_batch<I>(&self, tasks: I)
     where
         I: Iterator<Item = task::RawTask>;
