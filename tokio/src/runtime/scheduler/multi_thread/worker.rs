@@ -69,7 +69,11 @@ use crate::task::coop;
 use crate::util::atomic_cell::AtomicCell;
 use crate::util::rand::{FastRand, RngSeedGenerator};
 
+use super::fast_queue::fq_holder::QueueHolder;
+use super::fast_queue::FastQueue;
+use crate::runtime::scheduler::multi_thread::fast_queue::crossbeam::Crossbeam;
 use std::cell::RefCell;
+use std::f64::consts::E;
 use std::task::Waker;
 use std::thread;
 use std::time::Duration;
@@ -115,6 +119,8 @@ struct Core {
     /// The worker-local run queue.
     run_queue: queue::Local<Arc<Handle>>,
 
+    transfer_buf: Vec<Notified>,
+
     /// True if the worker is currently searching for more work. Searching
     /// involves attempting to steal from other workers.
     is_searching: bool,
@@ -151,6 +157,10 @@ pub(crate) struct Shared {
     ///  1. Submit work to the scheduler while **not** currently on a worker thread.
     ///  2. Submit work to the scheduler when a worker run queue is saturated
     pub(super) inject: inject::Shared<Arc<Handle>>,
+
+    /// Additional queue with fast concurrent access
+    /// It carries over some of the tasks from inject
+    pub(super) lf_queue: QueueHolder<Arc<Handle>, Crossbeam<Arc<Handle>>>,
 
     /// Coordinates idle workers
     idle: Idle,
@@ -252,6 +262,7 @@ pub(super) fn create(
     // Create the local queues
     for _ in 0..size {
         let (steal, run_queue) = queue::local();
+        let transfer_buf = Vec::with_capacity(config.local_queue_capacity);
 
         let park = park.clone();
         let unpark = park.unpark();
@@ -263,6 +274,7 @@ pub(super) fn create(
             lifo_slot: None,
             lifo_enabled: !config.disable_lifo_slot,
             run_queue,
+            transfer_buf,
             is_searching: false,
             is_shutdown: false,
             is_traced: false,
@@ -279,12 +291,18 @@ pub(super) fn create(
     let (idle, idle_synced) = Idle::new(size);
     let (inject, inject_synced) = inject::Shared::new();
 
+    let size_log = ((size as f64).log(E).ceil() as usize).max(1);
+    let inject_min = (config.local_queue_capacity * size_log).next_power_of_two();
+    let transfer_size = config.local_queue_capacity * 2 * size_log;
+    let lf_queue = Crossbeam::new(inject_min, transfer_size);
+
     let remotes_len = remotes.len();
     let handle = Arc::new(Handle {
         task_hooks: TaskHooks::from_config(&config),
         shared: Shared {
             remotes: remotes.into_boxed_slice(),
             inject,
+            lf_queue,
             idle,
             owned: OwnedTasks::new(size),
             synced: Mutex::new(Synced {
@@ -820,6 +838,19 @@ impl Core {
                 return maybe_task;
             }
 
+            let batch_size = self.run_queue.remaining_slots().clamp(1, 64);
+
+            let mut lf_tasks = worker.handle.shared.lf_queue.queue().pop_n(batch_size);
+            let first = lf_tasks.next();
+
+            if let Some(task) = first {
+                self.transfer_buf.extend(lf_tasks);
+                let drained = self.transfer_buf.drain(..);
+
+                self.run_queue.push_back(drained);
+                return Some(task);
+            }
+
             if worker.inject().is_empty() {
                 return None;
             }
@@ -1135,6 +1166,10 @@ impl Handle {
     }
 
     fn next_remote_task(&self) -> Option<Notified> {
+        if let Some(task) = self.shared.lf_queue.queue().pop() {
+            return Some(task);
+        }
+
         if self.shared.inject.is_empty() {
             return None;
         }
@@ -1148,9 +1183,33 @@ impl Handle {
         self.shared.scheduler_metrics.inc_remote_schedule_count();
 
         let mut synced = self.shared.synced.lock();
+
+        if self.shared.inject.is_closed(&synced.inject) {
+            return;
+        }
+
         // safety: passing in correct `idle::Synced`
         unsafe {
             self.shared.inject.push(&mut synced.inject, task);
+        }
+
+        let len = self.shared.inject.len();
+
+        let transfer_size = self.shared.lf_queue.transfer_size();
+
+        let transfer_border = self.shared.lf_queue.inject_min() + transfer_size;
+
+        if len >= transfer_border {
+            let mut tasks_to_transfer = Vec::with_capacity(transfer_size);
+            let tasks = unsafe { self.shared.inject.pop_n(&mut synced.inject, transfer_size) };
+            for task in tasks {
+                tasks_to_transfer.push(task);
+            }
+            drop(synced);
+            self.shared
+                .lf_queue
+                .queue()
+                .push_batch(tasks_to_transfer.into_iter());
         }
     }
 
@@ -1227,6 +1286,11 @@ impl Handle {
         // Drain the injection queue
         //
         // We already shut down every task, so we can simply drop the tasks.
+
+        while let Some(task) = self.shared.lf_queue.queue().pop() {
+            drop(task);
+        }
+
         while let Some(task) = self.next_remote_task() {
             drop(task);
         }
@@ -1247,7 +1311,9 @@ impl Overflow<Arc<Handle>> for Handle {
         I: Iterator<Item = task::Notified<Arc<Handle>>>,
     {
         unsafe {
-            self.shared.inject.push_batch(self, iter);
+            self.shared
+                .inject
+                .push_batch_overflow(self, iter, &self.shared.lf_queue);
         }
     }
 }
