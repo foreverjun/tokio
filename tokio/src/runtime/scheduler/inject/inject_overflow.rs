@@ -8,7 +8,7 @@ mod multi_thread_push_overflow {
     use std::mem::MaybeUninit;
     use std::sync::atomic::Ordering::Release;
 
-    const TRANSFER_SIZE : usize = 256;
+    const TRANSFER_SIZE: usize = 256;
 
     impl<T: 'static> Shared<T> {
         /// Pushes several values into the queue.
@@ -110,12 +110,12 @@ mod multi_thread_push_overflow {
 
             if new_len > transfer_border {
                 let mut tasks_to_transfer: [MaybeUninit<Notified<T>>; TRANSFER_SIZE] =
-                std::array::from_fn(|_| MaybeUninit::uninit());
+                    std::array::from_fn(|_| MaybeUninit::uninit());
                 let mut transferred = 0;
 
-                for i in 0..TRANSFER_SIZE {
+                for slot in tasks_to_transfer.iter_mut().take(TRANSFER_SIZE) {
                     if let Some(task) = synced_mut.pop() {
-                        tasks_to_transfer[i].write(task);
+                        slot.write(task);
                         transferred += 1;
                     } else {
                         break;
@@ -124,10 +124,10 @@ mod multi_thread_push_overflow {
 
                 self.len.store(new_len - transferred, Release);
                 drop(synced_lock);
-                for i in 0..transferred {
-                    let task = std::ptr::read(tasks_to_transfer[i].as_ptr());
+                for slot in tasks_to_transfer.iter_mut().take(transferred) {
+                    let task = std::ptr::read(slot.as_ptr());
                     queue_holder.queue().push(task);
-                    tasks_to_transfer[i] = MaybeUninit::uninit();
+                    *slot = MaybeUninit::uninit();
                 }
             } else {
                 self.len.store(new_len, Release);
