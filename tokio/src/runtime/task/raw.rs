@@ -264,6 +264,23 @@ impl RawTask {
     }
 }
 
+impl RawTask {
+    #[allow(dead_code)]
+    /// Safely extracts a *mut Header from the RawTask as a raw pointer.
+    pub(crate) fn as_mut_ptr(self) -> *mut Header {
+        self.ptr.as_ptr()
+    }
+
+    #[allow(dead_code)]
+    /// # Safety
+    /// The pointer must be non-null and point to a valid Header.
+    pub(crate) unsafe fn from_mut_ptr(ptr: *mut Header) -> RawTask {
+        RawTask {
+            ptr: NonNull::new_unchecked(ptr),
+        }
+    }
+}
+
 impl Copy for RawTask {}
 
 unsafe fn poll<T: Future, S: Schedule>(ptr: NonNull<Header>) {
