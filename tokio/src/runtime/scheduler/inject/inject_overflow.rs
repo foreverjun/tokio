@@ -104,8 +104,7 @@ mod multi_thread_push_overflow {
             // such, a non-atomic load followed by a store is safe.
             let current_len = self.len.unsync_load();
             let transfer_size = queue_holder.transfer_size().min(TRANSFER_SIZE);
-            let transfer_border =
-                queue_holder.inject_min() + transfer_size - transfer_size + TRANSFER_SIZE;
+            let transfer_border = queue_holder.inject_min() + transfer_size;
 
             let new_len = current_len + num;
 
@@ -114,7 +113,7 @@ mod multi_thread_push_overflow {
                     [MaybeUninit::uninit(); TRANSFER_SIZE];
                 let mut transferred = 0;
 
-                for task_slot in tasks_to_transfer.iter_mut().take(TRANSFER_SIZE) {
+                for task_slot in tasks_to_transfer.iter_mut().take(transfer_size) {
                     if let Some(task) = synced_mut.head {
                         synced_mut.head = unsafe { task.get_queue_next() };
 
