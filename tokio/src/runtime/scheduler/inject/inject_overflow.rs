@@ -104,7 +104,8 @@ mod multi_thread_push_overflow {
             // such, a non-atomic load followed by a store is safe.
             let current_len = self.len.unsync_load();
             let transfer_size = queue_holder.transfer_size().min(TRANSFER_SIZE);
-            let transfer_border = queue_holder.inject_min() + transfer_size - transfer_size + TRANSFER_SIZE;
+            let transfer_border =
+                queue_holder.inject_min() + transfer_size - transfer_size + TRANSFER_SIZE;
 
             let new_len = current_len + num;
 
